@@ -43,11 +43,11 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Box<Expr>> {
+    pub fn parse(&mut self) -> Result<Expr> {
         self.parse_e(1)
     }
 
-    fn parse_e(&mut self, min_bp: usize) -> Result<Box<Expr>> {
+    fn parse_e(&mut self, min_bp: usize) -> Result<Expr> {
         // This is the max binding power which is allowed for an operator
         let mut max_bp: usize = usize::MAX;
 
@@ -85,10 +85,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                         let inner_ast = self.parse_e(rbp)?;
 
                         // Update ast
-                        ast = Box::new(Expr::BinaryExpr(op, ast, inner_ast));
+                        ast = Expr::BinaryExpr(op, Box::new(ast), Box::new(inner_ast));
                     }
                     OpType::Fact => {
-                        ast = Box::new(Expr::PostfixExpr(op, ast));
+                        ast = Expr::PostfixExpr(op, Box::new(ast));
                     }
                 },
                 Token::LeftSquare => {
@@ -99,7 +99,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     self.expect(Token::RightSquare)?;
 
                     // Return new indexed expression
-                    ast = Box::new(Expr::IndexedExpr(ast, inner_ast));
+                    ast = Expr::IndexedExpr(Box::new(ast), Box::new(inner_ast));
                 }
                 Token::Question => {
                     // Next must be the condition expression
@@ -110,14 +110,14 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     // Parse false expression
                     let if_false = self.parse_e(rbp)?;
 
-                    ast = Box::new(Expr::TernaryExpr(ast, if_true, if_false));
+                    ast = Expr::TernaryExpr(Box::new(ast), Box::new(if_true), Box::new(if_false));
                 }
                 Token::Dot => {
                     // Parse the remaining expr with new current binding power as RBP
                     let inner_ast = self.parse_e(rbp)?;
 
                     // Update ast
-                    ast = Box::new(Expr::CompositionExpr(ast, inner_ast));
+                    ast = Expr::CompositionExpr(Box::new(ast), Box::new(inner_ast));
                 }
                 _ => unreachable!(),
             }
@@ -126,9 +126,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(ast)
     }
     // N-type tokens (which can start an expression)
-    fn parse_p(&mut self) -> Result<Box<Expr>> {
+    fn parse_p(&mut self) -> Result<Expr> {
         let next = self.next()?;
-        let res = match next {
+        let ast = match next {
             Token::Text(t) => Expr::Ident(t),
             Token::Int(i) => Expr::Int(i),
             Token::LeftParen => {
@@ -141,7 +141,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             Token::Op(op) if op == OpType::Sub => {
                 let rbp = next.rbp();
                 let mut ast = self.parse_e(rbp)?;
-                ast = Box::new(Expr::PrefixExpr(op, ast));
+                ast = Expr::PrefixExpr(op, Box::new(ast));
                 return Ok(ast);
             }
 
@@ -155,16 +155,16 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
                 let if_false = self.parse_e(1)?;
 
-                let ast = Box::new(Expr::CondExpr(cond, if_true, if_false));
+                let ast = Expr::CondExpr(Box::new(cond), Box::new(if_true), Box::new(if_false));
                 return Ok(ast);
             }
             t => return Err(ParseError::UnexpectedToken { token: t }),
         };
-        Ok(Box::new(res))
+        Ok(ast)
     }
 }
 
-fn parse(s: &str) -> Box<Expr> {
+fn parse(s: &str) -> Expr {
     let lex = Token::lexer(s);
     let mut parser = Parser::new(lex.into_iter());
     parser.parse().expect("parsing error")
